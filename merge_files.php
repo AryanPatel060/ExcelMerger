@@ -1,6 +1,6 @@
 <?php
-
 ini_set('max_execution_time',600);
+ini_set('memory_limit', '3076M');
 
 require_once 'PHPExcel/Classes/PHPExcel/IOFactory.php'; 
 
@@ -35,14 +35,14 @@ class FileMerger
                 throw new Exception("No files provided");
             }
 
-            // Main file (first file)
-            $mainFile = $filesMeta[0];
-            unset($filesMeta[0]);
+           
 
             $indexFiles = [];
             $allColumns = [];
 
             echo "Building indices for lookup files...\n";
+            
+            
             
             // Build indices for all lookup files
             foreach ($filesMeta as $index => $fileMeta) {
@@ -63,6 +63,14 @@ class FileMerger
                 $allColumns[] = $columns[$index];
             }
 
+            echo "<pre>";
+            print_r($allColumns);
+            echo "</pre>";
+            // die();
+
+            // Main file (first file)
+            $mainFile = $filesMeta[0];
+            unset($filesMeta[0]);
             // Generate output file
             $outputFile = $this->outputDir . 'merged_' . date('Y-m-d_H-i-s') . '.csv';
 
@@ -306,17 +314,40 @@ class FileMerger
 
         // Create final header
         $finalHeader = $this->buildFinalHeader($mainHeader, $allColumns);
-        fputcsv($outputHandle, $finalHeader);
 
-        $processedRows = 0;
         
+        
+        $processedRows = 0;
+        $columnsToOut = []; 
+        
+        foreach($allColumns as $col)
+        {
+            foreach($col as $_col)
+            {
+                $columnsToOut[] = $_col;
+            }
+        }
+        fputcsv($outputHandle, $columnsToOut); // Write main file header to output
+        $columnsToOut = $allColumns[0]; // Ensure unique columns
+        
+
         // Process main file row by row
         while (($row = fgetcsv($mainFile)) !== false) {
+
+            
             $joinValue = $row[$keyIndex];
             $joinKeys = str_split((string)$joinValue, 2); // YOUR EXACT INDEXING LOGIC
             
+            
             // Start with main file data
-            $mergedRow = array_combine($mainHeader, $row);
+            $_mergedRow = array_combine($mainHeader, $row);
+
+            $mergedRow = [];
+            foreach($columnsToOut as $col)
+            {
+                
+                $mergedRow[$col] = $_mergedRow[$col];
+            }
             
             // Merge data from each index file
             foreach ($indexFiles as $indexFile) {
@@ -327,12 +358,20 @@ class FileMerger
             }
             
             // Build final row according to header order
-            $finalRow = [];
-            foreach ($finalHeader as $column) {
-                $finalRow[] = $mergedRow[$column] ?? '';
-            }
+            // $finalRow = [];
+            // foreach ($finalHeader as $column) {
+            //     $finalRow[] = $mergedRow[$column] ?? '';
+            // }
+
+
+            // echo "<pre>";
+            // print_r($mergedRow);
+            // // print_r($finalRow);
+            // echo "</pre>";
+            // die();
             
-            fputcsv($outputHandle, $finalRow);
+            
+            fputcsv($outputHandle, $mergedRow);
             
             $processedRows++;
             
