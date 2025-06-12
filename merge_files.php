@@ -54,15 +54,30 @@ class FileMerger
 
                 echo "Processing index for: {$fileMeta['name']}\n";
 
-                $indexFile = $this->buildIndex(
+                $indexData = $this->buildIndex(
                     $fileMeta['path'],
                     $columns[$index],
                     $joinKeys[$index]
                 );
 
-                $indexFiles[] = $indexFile;
+                $indexFiles[] = $indexData;
                 $allColumns[] = $columns[$index];
             }
+
+            // $data = $this->getDataFromIndex($indexFiles[0],"1004-147");
+            // echo "<pre>";
+            // print_r($data); 
+            // echo "</pre>";
+            
+            // // // die;
+            // // echo "<pre>";
+            // // // print_r(array_keys($indexFiles[0]));
+            // // $keys = array_keys($indexFiles[0]);
+            // // sort($keys);
+            // // print_r($keys);
+            // // echo "</pre>";
+            // die();
+            
             
             // Main file (first file)
             $mainFile = $filesMeta[0];
@@ -151,55 +166,26 @@ class FileMerger
         }
 
         $indexData = [];
-        $rowCount = 0;
 
         while (($row = fgetcsv($file)) !== false) {
-            $joinValue = $row[$keyIndex];
-            $joinKeys = str_split((string)$joinValue, 2);
+            // $joinValue =
+            // $joinKeys = str_split((string)$joinValue, 2);
 
             $requiredCols = [];
             foreach ($columnIndices as $col => $colIndex) {
                 $requiredCols[$col] = $row[$colIndex] ?? '';
             }
 
-            $this->setNestedValue($indexData, $joinKeys, $requiredCols);
+            $this->setNestedValue($indexData, $row[$keyIndex], $requiredCols);
 
-            $rowCount++;
-
-            // Write in chunks to manage memory
-            if ($rowCount % $this->chunkSize === 0) {
-                $this->writeIndexChunk($indexFile, $indexData, $rowCount === $this->chunkSize);
-                $indexData = [];
-                gc_collect_cycles();
-
-                echo "Processed $rowCount CSV rows...\n";
-                flush();
-            }
         }
-
-        // Write remaining data
-        if (!empty($indexData)) {
-            $this->writeIndexChunk($indexFile, $indexData, $rowCount <= $this->chunkSize);
-        }
-
         fclose($file);
-        echo "CSV index built: $rowCount rows processed\n";
-        return $indexFile;
+        return $indexData;
     }
-
-    /**
-     * Build index from Excel file using PHPExcel
-     */
 
 
     private function buildIndexFromExcel($filePath, $columns, $key)
     {
-        $indexFile = $this->tempDir . 'index_' . md5($filePath) . '.json';
-
-        if (file_exists($indexFile)) {
-            return $indexFile;
-        }
-
         echo "Processing Excel file: $filePath\n";
 
         try {
@@ -217,7 +203,6 @@ class FileMerger
                 $header[] = trim((string) $cellValue);
             }
 
-            // Find key index (case-insensitive)
             $normalizedHeader = array_map('strtolower', $header);
             $keyIndex = array_search(strtolower($key), $normalizedHeader);
             if ($keyIndex === false) {
@@ -238,10 +223,10 @@ class FileMerger
 
             // Process rows starting from row 2 (skip header)
             for ($row = 2; $row <= $highestRow; $row++) {
-                $joinValue = $worksheet->getCellByColumnAndRow($keyIndex + 1, $row)->getValue();
+                $value = $worksheet->getCellByColumnAndRow($keyIndex + 1, $row)->getValue();
 
                 
-                $joinKeys = str_split((string) $joinValue, 2); // Custom nesting logic
+                // $joinKeys = str_split((string) $joinValue, 2); // Custom nesting logic
 
                 $requiredCols = [];
                 foreach ($columnIndices as $col => $colIndex) {
@@ -249,30 +234,30 @@ class FileMerger
                     $requiredCols[$col] = $cellValue ?? '';
                 }
 
-                $this->setNestedValue($indexData, $joinKeys, $requiredCols);
+                $this->setNestedValue($indexData, $value, $requiredCols);
 
-                $processedRows++;
+                // $processedRows++;
 
-                if ($processedRows % $this->chunkSize === 0) {
-                    $this->writeIndexChunk($indexFile, $indexData, $processedRows === $this->chunkSize);
-                    $indexData = [];
-                    gc_collect_cycles();
-                    echo "Processed $processedRows Excel rows...\n";
-                    flush();
-                }
+                // if ($processedRows % $this->chunkSize === 0) {
+                //     $this->writeIndexChunk($indexFile, $indexData, $processedRows === $this->chunkSize);
+                //     $indexData = [];
+                //     gc_collect_cycles();
+                //     echo "Processed $processedRows Excel rows...\n";
+                //     flush();
+                // }
             }
 
-            // Write any remaining data
-            if (!empty($indexData)) {
-                $this->writeIndexChunk($indexFile, $indexData, $processedRows <= $this->chunkSize);
-            }
+            // // Write any remaining data
+            // if (!empty($indexData)) {
+            //     $this->writeIndexChunk($indexFile, $indexData, $processedRows <= $this->chunkSize);
+            // }
 
             // Cleanup
             $spreadsheet->disconnectWorksheets();
             unset($spreadsheet);
 
             echo "Excel index built: $processedRows rows processed\n";
-            return $indexFile;
+            return $indexData;
         } catch (\PhpOffice\PhpSpreadsheet\Reader\Exception $e) {
             throw new Exception("Error processing Excel file '$filePath': " . $e->getMessage());
         }
@@ -334,8 +319,8 @@ class FileMerger
         while (($row = fgetcsv($mainFile)) !== false) {
 
 
-            $joinValue = $row[$keyIndex];
-            $joinKeys = str_split((string)$joinValue, 2); // YOUR EXACT INDEXING LOGIC
+            // $joinValue = ;
+            // $joinKeys = str_split((string)$joinValue, 2); // YOUR EXACT INDEXING LOGIC
 
 
             // Start with main file data
@@ -350,7 +335,7 @@ class FileMerger
             
             // Merge data from each index file
             foreach ($indexFiles as $indexFile) {
-                $matchedData = $this->getDataFromIndex($indexFile, $joinKeys);
+                $matchedData = $this->getDataFromIndex($indexFile, $row[$keyIndex]);
                 
                 if ($matchedData) {
                     $mergedRow = array_merge($mergedRow, $matchedData);
@@ -439,8 +424,8 @@ class FileMerger
 
             // Process rows (start at 2 to skip header)
             for ($row = 2; $row <= $highestRow; $row++) {
-                $joinValue = $worksheet->getCellByColumnAndRow($keyIndex + 1, $row)->getValue();
-                $joinKeys = str_split((string)$joinValue, 2); // Your nesting logic
+                $value = $worksheet->getCellByColumnAndRow($keyIndex + 1, $row)->getValue();
+                // $joinKeys = str_split((string)$joinValue, 2); // Your nesting logic
 
                 // Read all row values
                 $rowData = [];
@@ -455,7 +440,7 @@ class FileMerger
 
                 // Merge index data
                 foreach ($indexFiles as $indexFile) {
-                    $matchedData = $this->getDataFromIndex($indexFile, $joinKeys);
+                    $matchedData = $this->getDataFromIndex($indexFile, $value);
                     if ($matchedData) {
                         $mergedRow = array_merge($mergedRow, $matchedData);
                     }
@@ -495,11 +480,23 @@ class FileMerger
     }
 
 
-    private function setNestedValue(&$targetArray, $keys, $value)
+    private function setNestedValue(&$targetArray, $key, $value)
     {
+        if($key == "1004")
+        {
+            echo "Setting value for key:\n";
+        }
+        if(strlen($key) %2 == 0) {
+            $keys = str_split((string)$key, 2); 
+        } else {
+            $keys = str_split("_".$key, 2); 
+        }
+        
+
         $current = &$targetArray;
 
         foreach ($keys as $key) {
+            $key = trim($key);
             if (!isset($current[$key])) {
                 $current[$key] = [];
             }
@@ -512,29 +509,32 @@ class FileMerger
     /**
      * Get data from index using YOUR EXACT INDEXING LOGIC
      */
-    private function getDataFromIndex($indexFile, $joinKeys)
-    {
-        static $cache = [];
+    private function getDataFromIndex($indexFile, $key)
+    {      
+        // static $cache = [];
 
-        if (!isset($cache[$indexFile])) {
-            if (!file_exists($indexFile)) {
-                return null;
-            }
+        // if (!isset($cache[$indexFile])) {
+        //     if (!file_exists($indexFile)) {
+        //         return null;
+        //     }
 
-            $indexContent = file_get_contents($indexFile);
-            $indexContent = rtrim($indexContent, ",\n") . "\n}";
-            $cache[$indexFile] = json_decode($indexContent, true);
+        //     $indexContent = file_get_contents($indexFile);
+        //     $indexContent = rtrim($indexContent, ",\n") . "\n}";
+        //     $cache[$indexFile] = json_decode($indexContent, true);
 
+        // }
+
+        if(strlen($key) %2 == 0) {
+            $keys = str_split((string)$key, 2); 
+        } else {
+            $keys = str_split("_".$key, 2); 
         }
-
- 
-        $current = $cache[$indexFile];       
+        $current = $indexFile;       
     
         // YOUR EXACT INDEXING LOGIC PRESERVED
-        foreach ($joinKeys as $key) {
+        foreach ($keys as $key) {
             if (isset($current[$key])) {
                 $current = $current[$key];
-              
             } else {
                 return null;
             }
