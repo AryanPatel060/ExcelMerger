@@ -53,15 +53,18 @@ project-root/
 
 ## 📸 Screenshots 
 
-_Add screenshots of your upload page, header selection, and download page here._
+### 🔼 Upload Page
+![Upload Page](uploads/media/uploadpage.png)
+
+### 📝 Header Selection
+![Header Selection](uploads/media/headerselectionpage.png)
+
+### 📥 Download Output
+![Download Page](uploads/media/downloadpage.png)
+
 
 ---
 
-## 📄 License
-
-This project is open-source and free to use under the [MIT License](LICENSE).
-
----
 
 ## 🙌 Acknowledgments
 

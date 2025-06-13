@@ -33,7 +33,7 @@ class FileMerger
             $indexFiles = [];
             $allColumns = [];
 
-            echo "Building indices for lookup files...\n";
+            echo "Building indices for lookup files...\n<br>";
 
             // Build indices for all lookup files
             foreach ($filesMeta as $index => $fileMeta) {
@@ -43,7 +43,7 @@ class FileMerger
                 }                
                 if($index != 0)
                 {
-                    echo "Processing index for: {$fileMeta['name']}\n";
+                    echo "Processing index for: {$fileMeta['name']}\n<br>";
                     $indexData = $this->buildIndex(
                         $fileMeta['path'],
                         $columns[$index],
@@ -59,7 +59,7 @@ class FileMerger
 
             $outputFile = $this->outputDir . 'merged_' . date('Y-m-d_H-i-s') . '.csv';
 
-            echo "Starting merge process...\n";
+            echo "Starting merge process...\n<br>";
 
             $this->mergeFiles(
                 $mainFile['path'],
@@ -198,7 +198,7 @@ class FileMerger
             $spreadsheet->disconnectWorksheets();
             unset($spreadsheet);
 
-            echo "Excel index built: $processedRows rows processed\n";
+            // echo "Excel index built: $processedRows rows processed\n";
             return $indexData;
         } catch (Exception $e) {
             throw new Exception("Error processing Excel file '$filePath': " . $e->getMessage());
