@@ -416,15 +416,7 @@ class FileMerger
         }
     }
 
-    public function cleanup()
-    {
-        $files = glob($this->tempDir . '*');
-        foreach ($files as $file) {
-            if (is_file($file)) {
-                unlink($file);
-            }
-        }
-    }
+  
 }
 
 // ===== MAIN PROCESSING =====
@@ -449,7 +441,7 @@ try {
     echo "</div>";
     echo "<p><strong>Memory Peak Usage:</strong> " . round(memory_get_peak_usage(true) / 1024 / 1024, 2) . " MB</p>";
 
-    $fileMerger->cleanup();
+    // $fileMerger->cleanup();
 
 } catch (Exception $e) {
     echo "<div style='color: red; padding: 15px; background: #ffe6e6; border-radius: 5px; margin: 20px 0;'>";
@@ -458,7 +450,7 @@ try {
     echo "</div>";
 
     if (isset($fileMerger)) {
-        $fileMerger->cleanup();
+        // $fileMerger->cleanup();
     }
 }
 ?>
@@ -488,7 +480,7 @@ if (isset($_GET['file'])) {
     $handle = fopen($file, 'rb');
     while (!feof($handle)) {
         echo fread($handle, 8192);
-        flush();
+        // flush();
     }
     fclose($handle);
     exit;
