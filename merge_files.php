@@ -1,8 +1,7 @@
 <?php
 ini_set('max_execution_time', 600);
-ini_set('memory_limit', '3076M');
+ini_set('memory_limit', '3G');
 require __DIR__ . '/vendor/autoload.php';
-
 require_once 'PHPExcel/Classes/PHPExcel/IOFactory.php';
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -14,24 +13,16 @@ class FileMerger
     private $chunkSize;
     private $outputDir;
 
-    public function __construct($tempDir = 'temp/', $outputDir = 'uploads/results/', $chunkSize = 5000)
+    public function __construct($outputDir = 'uploads/results/', $chunkSize = 5000)
     {
-        $this->tempDir = $tempDir;
         $this->outputDir = $outputDir;
         $this->chunkSize = $chunkSize;
-
-        // Create directories if they don't exist
-        if (!is_dir($this->tempDir)) {
-            mkdir($this->tempDir, 0755, true);
-        }
+       
         if (!is_dir($this->outputDir)) {
             mkdir($this->outputDir, 0755, true);
         }
     }
 
-    /**
-     * Main processing function
-     */
     public function processFiles($filesMeta, $joinKeys, $columns)
     {
         try {
@@ -46,49 +37,31 @@ class FileMerger
 
             // Build indices for all lookup files
             foreach ($filesMeta as $index => $fileMeta) {
-
                 if (!isset($joinKeys[$index]) || !isset($columns[$index])) {
                     echo "Skipping file {$fileMeta['name']}: Missing join key or columns\n";
                     continue;
+                }                
+                if($index != 0)
+                {
+                    echo "Processing index for: {$fileMeta['name']}\n";
+                    $indexData = $this->buildIndex(
+                        $fileMeta['path'],
+                        $columns[$index],
+                        $joinKeys[$index]
+                    );   
+                    $indexFiles[] = $indexData;
                 }
-
-                echo "Processing index for: {$fileMeta['name']}\n";
-
-                $indexData = $this->buildIndex(
-                    $fileMeta['path'],
-                    $columns[$index],
-                    $joinKeys[$index]
-                );
-
-                $indexFiles[] = $indexData;
                 $allColumns[] = $columns[$index];
-            }
-
-            // $data = $this->getDataFromIndex($indexFiles[0],"1004-147");
-            // echo "<pre>";
-            // print_r($data); 
-            // echo "</pre>";
+            }            
             
-            // // // die;
-            // // echo "<pre>";
-            // // // print_r(array_keys($indexFiles[0]));
-            // // $keys = array_keys($indexFiles[0]);
-            // // sort($keys);
-            // // print_r($keys);
-            // // echo "</pre>";
-            // die();
-            
-            
-            // Main file (first file)
             $mainFile = $filesMeta[0];
             unset($filesMeta[0]);
-            // Generate output file
+
             $outputFile = $this->outputDir . 'merged_' . date('Y-m-d_H-i-s') . '.csv';
 
             echo "Starting merge process...\n";
 
-            // Process main file and merge with indices
-            $totalRows = $this->mergeFiles(
+            $this->mergeFiles(
                 $mainFile['path'],
                 $indexFiles,
                 $joinKeys[0],
@@ -96,23 +69,19 @@ class FileMerger
                 $allColumns
             );
 
-            echo "\nMerge completed successfully!\n";
-            echo "Output file: $outputFile\n";
-            echo "Total rows processed: $totalRows\n";
+            echo "<br>Merge completed successfully!<br>";
+            echo "Output file: $outputFile\n<br>";
 
             // Generate download button
             $this->generateDownloadButton($outputFile);
 
             return $outputFile;
         } catch (Exception $e) {
-            echo "Error: " . $e->getMessage() . "\n";
+            echo "Error: " . $e->getMessage() . "\n<br>";
             throw $e;
         }
     }
 
-    /**
-     * Build index from file (CSV or Excel)
-     */
     public function buildIndex($filePath, $columns, $key)
     {
         if (!file_exists($filePath)) {
@@ -128,9 +97,6 @@ class FileMerger
         return $this->buildIndexFromCsv($filePath, $columns, $key);
     }
 
-    /**
-     * Build index from CSV file
-     */
     private function buildIndexFromCsv($filePath, $columns, $key)
     {
         $indexFile = $this->tempDir . 'index_' . md5($filePath) . '.json';
@@ -151,6 +117,8 @@ class FileMerger
         }
 
         $keyIndex = array_search($key, $header);
+
+        
         if ($keyIndex === false) {
             fclose($file);
             throw new Exception("Join key '$key' not found in CSV file: $filePath");
@@ -168,25 +136,21 @@ class FileMerger
         $indexData = [];
 
         while (($row = fgetcsv($file)) !== false) {
-            // $joinValue =
-            // $joinKeys = str_split((string)$joinValue, 2);
-
             $requiredCols = [];
             foreach ($columnIndices as $col => $colIndex) {
                 $requiredCols[$col] = $row[$colIndex] ?? '';
             }
 
             $this->setNestedValue($indexData, $row[$keyIndex], $requiredCols);
-
+            
         }
         fclose($file);
         return $indexData;
     }
 
-
     private function buildIndexFromExcel($filePath, $columns, $key)
     {
-        echo "Processing Excel file: $filePath\n";
+        echo "Processing Excel file: $filePath\n<br>";
 
         try {
             $spreadsheet = IOFactory::load($filePath);
@@ -224,49 +188,23 @@ class FileMerger
             // Process rows starting from row 2 (skip header)
             for ($row = 2; $row <= $highestRow; $row++) {
                 $value = $worksheet->getCellByColumnAndRow($keyIndex + 1, $row)->getValue();
-
-                
-                // $joinKeys = str_split((string) $joinValue, 2); // Custom nesting logic
-
                 $requiredCols = [];
                 foreach ($columnIndices as $col => $colIndex) {
                     $cellValue = $worksheet->getCellByColumnAndRow($colIndex + 1, $row)->getValue();
                     $requiredCols[$col] = $cellValue ?? '';
                 }
-
                 $this->setNestedValue($indexData, $value, $requiredCols);
-
-                // $processedRows++;
-
-                // if ($processedRows % $this->chunkSize === 0) {
-                //     $this->writeIndexChunk($indexFile, $indexData, $processedRows === $this->chunkSize);
-                //     $indexData = [];
-                //     gc_collect_cycles();
-                //     echo "Processed $processedRows Excel rows...\n";
-                //     flush();
-                // }
-            }
-
-            // // Write any remaining data
-            // if (!empty($indexData)) {
-            //     $this->writeIndexChunk($indexFile, $indexData, $processedRows <= $this->chunkSize);
-            // }
-
-            // Cleanup
+            }       
             $spreadsheet->disconnectWorksheets();
             unset($spreadsheet);
 
             echo "Excel index built: $processedRows rows processed\n";
             return $indexData;
-        } catch (\PhpOffice\PhpSpreadsheet\Reader\Exception $e) {
+        } catch (Exception $e) {
             throw new Exception("Error processing Excel file '$filePath': " . $e->getMessage());
         }
     }
 
-
-    /**
-     * Merge files with streaming approach
-     */
     private function mergeFiles($mainFilePath, $indexFiles, $joinKey, $outputFile, $allColumns)
     {
         $ext = pathinfo($mainFilePath, PATHINFO_EXTENSION);
@@ -274,13 +212,10 @@ class FileMerger
         if (strtolower($ext) === 'xlsx' || strtolower($ext) === 'xls') {
             return $this->mergeExcelFiles($mainFilePath, $indexFiles, $joinKey, $outputFile, $allColumns);
         }
-
-        return $this->mergeCsvFiles($mainFilePath, $indexFiles, $joinKey, $outputFile, $allColumns);
+        $this->mergeCsvFiles($mainFilePath, $indexFiles, $joinKey, $outputFile, $allColumns);
+        return ;
     }
 
-    /**
-     * Merge CSV files with streaming
-     */
     private function mergeCsvFiles($mainFilePath, $indexFiles, $joinKey, $outputFile, $allColumns)
     {
         $mainFile = fopen($mainFilePath, 'r');
@@ -298,12 +233,6 @@ class FileMerger
             throw new Exception("Join key '$joinKey' not found in main CSV file");
         }
 
-        // Create final header
-        // $finalHeader = $this->buildFinalHeader($mainHeader, $allColumns);
-
-
-
-        $processedRows = 0;
         $columnsToOut = [];
 
         foreach ($allColumns as $col) {
@@ -311,29 +240,19 @@ class FileMerger
                 $columnsToOut[] = $_col;
             }
         }
-        fputcsv($outputHandle, $columnsToOut); // Write main file header to output
-        $columnsToOut = $allColumns[0]; // Ensure unique columns
+        
+        fputcsv($outputHandle, $columnsToOut);  
+        $columnsToOut = $allColumns[0];  
 
-
-        // Process main file row by row
         while (($row = fgetcsv($mainFile)) !== false) {
 
-
-            // $joinValue = ;
-            // $joinKeys = str_split((string)$joinValue, 2); // YOUR EXACT INDEXING LOGIC
-
-
-            // Start with main file data
             $_mergedRow = array_combine($mainHeader, $row);
-
+            
             $mergedRow = [];
             foreach ($columnsToOut as $col) {
-
+                
                 $mergedRow[$col] = $_mergedRow[$col];
             }
-           
-            
-            // Merge data from each index file
             foreach ($indexFiles as $indexFile) {
                 $matchedData = $this->getDataFromIndex($indexFile, $row[$keyIndex]);
                 
@@ -341,38 +260,20 @@ class FileMerger
                     $mergedRow = array_merge($mergedRow, $matchedData);
                 }
             }       
-           
             
             @fputcsv($outputHandle, $mergedRow);
 
-            $processedRows++;
-
-            // Progress indicator
-            if ($processedRows % 10000 === 0) {
-                echo "Processed $processedRows rows...\n";
-                flush();
-            }
-
-            // Memory cleanup
-            if ($processedRows % $this->chunkSize === 0) {
-                gc_collect_cycles();
-            }
         }
 
         fclose($mainFile);
         fclose($outputHandle);
 
-        return $processedRows;
+        return ;
     }
-
-    /**
-     * Merge Excel files with streaming
-     */
 
     private function mergeExcelFiles($mainFilePath, $indexFiles, $joinKey, $outputFile, $allColumns)
     {
         try {
-            // Load main Excel file using PhpSpreadsheet
             $spreadsheet = IOFactory::load($mainFilePath);
             $worksheet = $spreadsheet->getActiveSheet();
 
@@ -380,15 +281,12 @@ class FileMerger
             $highestColumn = $worksheet->getHighestColumn();
             $highestColumnIndex = Coordinate::columnIndexFromString($highestColumn);
 
-            // Read header
             $mainHeader = [];
             for ($col = 1; $col <= $highestColumnIndex; $col++) {
                 $cellValue = $worksheet->getCellByColumnAndRow($col, 1)->getValue();
                 $mainHeader[] = trim((string)$cellValue);
             }
           
-            
-            // Find key index (case-insensitive)
             $normalizedHeader = array_map('strtolower', $mainHeader);
             
             $keyIndex = array_search(strtolower($joinKey), $normalizedHeader);
@@ -397,16 +295,10 @@ class FileMerger
                 throw new Exception("Join key '$joinKey' not found in main Excel file");
             }
 
-            // Open output CSV
             $outputHandle = fopen($outputFile, 'w');
             if (!$outputHandle) {
                 throw new Exception("Failed to create output file: $outputFile");
             }
-
-            // Build final CSV header
-            // $finalHeader = $this->buildFinalHeader($mainHeader, $allColumns);
-            
-           
             
             $columnsToOut = [];
 
@@ -415,30 +307,22 @@ class FileMerger
                     $columnsToOut[] = $_col;
                 }
             }
-            $finalHeader = $columnsToOut; // Ensure unique columns
+            $finalHeader = $columnsToOut; 
           
-            fputcsv($outputHandle, $columnsToOut); // Write main file header to output
+            fputcsv($outputHandle, $columnsToOut); 
             $columnsToOut = $allColumns[0]; 
             
-            $processedRows = 0;
-
-            // Process rows (start at 2 to skip header)
             for ($row = 2; $row <= $highestRow; $row++) {
                 $value = $worksheet->getCellByColumnAndRow($keyIndex + 1, $row)->getValue();
-                // $joinKeys = str_split((string)$joinValue, 2); // Your nesting logic
 
-                // Read all row values
                 $rowData = [];
                 for ($col = 1; $col <= $highestColumnIndex; $col++) {
                     $cellValue = $worksheet->getCellByColumnAndRow($col, $row)->getValue();
                     $rowData[] = $cellValue;
                 }
                 
-                // Combine main header with row
                 $mergedRow = array_combine($mainHeader, $rowData);
                
-
-                // Merge index data
                 foreach ($indexFiles as $indexFile) {
                     $matchedData = $this->getDataFromIndex($indexFile, $value);
                     if ($matchedData) {
@@ -446,53 +330,33 @@ class FileMerger
                     }
                 }
                 
-                // Ensure unique columns
-                
-                
-                // Build final row by header
                 $finalRow = [];
                 foreach ($finalHeader as $column) {
-                    
                     $finalRow[] = $mergedRow[$column] ?? '';
                 }
               
                 fputcsv($outputHandle, $finalRow);
-                $processedRows++;
-
-                if ($processedRows % 1000 === 0) {
-                    echo "Processed $processedRows Excel rows...\n";
-                    flush();
-                }
-
-                if ($processedRows % 5000 === 0) {
-                    gc_collect_cycles(); // Free memory
-                }
+               
             }
 
             fclose($outputHandle);
             $spreadsheet->disconnectWorksheets();
             unset($spreadsheet);
 
-            return $processedRows;
+            return ;
         } catch (Exception $e) {
             throw new Exception("Error merging Excel files: " . $e->getMessage());
         }
     }
 
-
     private function setNestedValue(&$targetArray, $key, $value)
     {
-        if($key == "1004")
-        {
-            echo "Setting value for key:\n";
-        }
         if(strlen($key) %2 == 0) {
             $keys = str_split((string)$key, 2); 
         } else {
             $keys = str_split("_".$key, 2); 
         }
-        
-
+      
         $current = &$targetArray;
 
         foreach ($keys as $key) {
@@ -503,26 +367,12 @@ class FileMerger
             $current = &$current[(string)$key];
         }
 
-        $current = $value;
+        $current['value'] = $value;
+    
     }
 
-    /**
-     * Get data from index using YOUR EXACT INDEXING LOGIC
-     */
     private function getDataFromIndex($indexFile, $key)
     {      
-        // static $cache = [];
-
-        // if (!isset($cache[$indexFile])) {
-        //     if (!file_exists($indexFile)) {
-        //         return null;
-        //     }
-
-        //     $indexContent = file_get_contents($indexFile);
-        //     $indexContent = rtrim($indexContent, ",\n") . "\n}";
-        //     $cache[$indexFile] = json_decode($indexContent, true);
-
-        // }
 
         if(strlen($key) %2 == 0) {
             $keys = str_split((string)$key, 2); 
@@ -531,7 +381,6 @@ class FileMerger
         }
         $current = $indexFile;       
     
-        // YOUR EXACT INDEXING LOGIC PRESERVED
         foreach ($keys as $key) {
             if (isset($current[$key])) {
                 $current = $current[$key];
@@ -540,50 +389,15 @@ class FileMerger
             }
         }
         
-        return is_array($current) ? $current : null;
+        if(isset($current['value']))
+        {
+            return $current['value'];
+        }
+        else {
+            return null;
+        }
     }
 
-    /**
-     * Write index chunk to file
-     */
-    private function writeIndexChunk($indexFile, $data, $isFirst = false)
-    {
-        $mode = $isFirst ? 'w' : 'a';
-        $file = fopen($indexFile, $mode);
-
-        if ($isFirst) {
-            fwrite($file, "{\n");
-        }
-
-        foreach ($data as $key => $value) {
-            $line = '"' . $key . '":' . json_encode($value) . ",\n";
-            fwrite($file, $line);
-        }
-
-        fclose($file);
-    }
-
-    /**
-     * Build final header combining all columns
-     */
-    private function buildFinalHeader($mainHeader, $allColumns)
-    {
-        $finalHeader = $mainHeader;
-
-        foreach ($allColumns as $fileColumns) {
-            foreach ($fileColumns as $column) {
-                if (!in_array($column, $finalHeader)) {
-                    $finalHeader[] = $column;
-                }
-            }
-        }
-
-        return $finalHeader;
-    }
-
-    /**
-     * Generate download button
-     */
     private function generateDownloadButton($outputFile)
     {
         if (file_exists($outputFile)) {
@@ -602,9 +416,6 @@ class FileMerger
         }
     }
 
-    /**
-     * Clean up temporary files
-     */
     public function cleanup()
     {
         $files = glob($this->tempDir . '*');
@@ -619,7 +430,6 @@ class FileMerger
 // ===== MAIN PROCESSING =====
 
 try {
-    // Get POST data
     $filesMeta = $_POST['files'] ?? [];
     $joinKeys = $_POST['join_keys'] ?? [];
     $columns = $_POST['columns'] ?? [];
@@ -629,20 +439,17 @@ try {
         throw new Exception("No files provided");
     }
 
-    // Initialize file merger
-    $fileMerger = new FileMerger('temp/', 'uploads/results/', 5000);
+    $fileMerger = new FileMerger('uploads/results/', 5000);
 
     echo "<h2>🔄 Processing File Merge...</h2>";
     echo "<div style='font-family: monospace; background: #f8f9fa; padding: 15px; border-radius: 5px;'>";
 
-    // Process files
     $outputFile = $fileMerger->processFiles($filesMeta, $joinKeys, $columns);
 
     echo "</div>";
     echo "<p><strong>Memory Peak Usage:</strong> " . round(memory_get_peak_usage(true) / 1024 / 1024, 2) . " MB</p>";
 
-    // Optionally clean up temporary files after success
-    // $fileMerger->cleanup();
+    $fileMerger->cleanup();
 
 } catch (Exception $e) {
     echo "<div style='color: red; padding: 15px; background: #ffe6e6; border-radius: 5px; margin: 20px 0;'>";
@@ -650,7 +457,6 @@ try {
     echo "<p>" . htmlspecialchars($e->getMessage()) . "</p>";
     echo "</div>";
 
-    // Cleanup on error
     if (isset($fileMerger)) {
         $fileMerger->cleanup();
     }
@@ -659,7 +465,6 @@ try {
 
 <?php
 // ===== DOWNLOAD SCRIPT =====
-// Save this as download.php
 
 if (isset($_GET['file'])) {
     $file = $_GET['file'] ?? '';
@@ -668,7 +473,6 @@ if (isset($_GET['file'])) {
         die('File not found');
     }
 
-    // Security check - only allow files from results directory
     if (strpos($file, 'uploads/results/') !== 0) {
         die('Invalid file path');
     }
@@ -681,7 +485,6 @@ if (isset($_GET['file'])) {
     header('Cache-Control: must-revalidate');
     header('Pragma: public');
 
-    // Read and output file in chunks to handle large files
     $handle = fopen($file, 'rb');
     while (!feof($handle)) {
         echo fread($handle, 8192);
